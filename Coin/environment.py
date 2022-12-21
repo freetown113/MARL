@@ -80,11 +80,11 @@ class CoinGameVec:
 
     def reset(self):
         self.info = {'gold_coins': 0,
-                      'black_coins': 0,
-                      'black_self': 0,
-                      'black_golds': 0,
-                      'gold_self': 0,
-                      'gold_blacks': 0}
+                     'black_coins': 0,
+                     'black_self': 0,
+                     'black_golds': 0,
+                     'gold_self': 0,
+                     'gold_blacks': 0}
         self.step_count = 0
         self.black_coin = np.random.randint(2, size=self.batch_size)
         # Agent and coin positions

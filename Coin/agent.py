@@ -187,8 +187,8 @@ class DistributionalDQNAgent(DQNAgent):
                          action_selector, batch_size,
                          gamma, device, preprocessor)
         self.n_atoms = 51
-        self.V_min = -2
-        self.V_max = 1
+        self.V_min = -20
+        self.V_max = 20
 
     @torch.no_grad()
     def sample_action(self,

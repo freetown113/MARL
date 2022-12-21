@@ -26,13 +26,13 @@ def weights_init(init_type: str = 'xavier'):
             elif init_type == 'kaiming':
                 torch.nn.init.kaiming_normal(m.weight.data, a=0, mode='fan_in')
             elif init_type == 'orthogonal':
-                torch.nn.init.orthogonal(m.weight.data, gain=math.sqrt(2))
+                nn.init.orthogonal_(m.weight.data, gain=math.sqrt(2))
             elif init_type == 'default':
                 pass
             else:
                 assert 0, "Unsupported initialization: {}".format(init_type)
             if hasattr(m, 'bias') and m.bias is not None:
-                torch.nn.init.constant(m.bias.data, 0.0)
+                nn.init.constant_(m.bias.data, 0.0)
     return init_fun
 
 
@@ -98,8 +98,8 @@ class DistributionalNetwork(nn.Module):
                  ) -> None:
         super().__init__()
         self.n_atoms = 51
-        self.Vmin = -2
-        self.Vmax = 1
+        self.Vmin = -20
+        self.Vmax = 20
         self.Delta_z = (self.Vmax - self.Vmin) / (self.n_atoms - 1)
 
         self.conv = nn.Sequential(

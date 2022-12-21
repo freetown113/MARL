@@ -112,8 +112,8 @@ def train():
         if done:
             context = info
             state = env.reset()
-            episode_reward_1.append(np.mean(mean_rews_1))
-            episode_reward_2.append(np.mean(mean_rews_2))
+            episode_reward_1.append(np.sum(mean_rews_1))
+            episode_reward_2.append(np.sum(mean_rews_2))
             mean_rews_1 = []
             mean_rews_2 = []
         else:
