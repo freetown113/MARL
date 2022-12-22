@@ -48,7 +48,7 @@ config__ = {
 def train():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    env = environment.CoinGameVec(100, 1, display=False)
+    env = environment.CoinGameVec(100, 1, 5, display=False)
 
     net_1 = model.Network(env.observation_space.shape,
                                         env.action_space.n, 1).to(device)
@@ -82,7 +82,7 @@ def train():
     mean_rews_2 = []
     episode_reward_1 = []
     episode_reward_2 = []
-    context = None
+    context = dict()
 
     state = env.reset()
     start = time.process_time()
@@ -93,7 +93,7 @@ def train():
         # if i % 10000 == 0:
         #     net_2.load_state_dict(net_1.state_dict())
 
-        state = torch.from_numpy(state).to(device)
+        state = state.to(device)
 
         action_1 = agnt_1.sample_action(state)
         action_2 = agnt_2.sample_action(state)
@@ -106,11 +106,13 @@ def train():
 
         buf.add_element(experience(state=state.squeeze(0), action=actions,
                                    reward=reward,
-                                   done=torch.tensor((1 if done else 0,), dtype=torch.long),
-                                   next_state=torch.from_numpy(next_state).squeeze(0)))
+                                   done=torch.tensor((1 if done else 0,),
+                                                     dtype=torch.long),
+                                   next_state=next_state.squeeze(0)))
 
         if done:
-            context = info
+            context = {key: context.get(key, 0) + info.get(key, 0)
+                       for key in set(context) | set(info)}
             state = env.reset()
             episode_reward_1.append(np.sum(mean_rews_1))
             episode_reward_2.append(np.sum(mean_rews_2))
@@ -143,7 +145,7 @@ def train():
         eps_tracker.frame(i)
         beta_tracker.frame(i)
 
-        if i % 5000 == 0:
+        if i % 10000 == 0 and i > 0:
             mark = time.process_time()
             mean_rew_1 = np.mean(episode_reward_1)
             mean_loss_1 = np.mean(mean_loss_1)
@@ -152,7 +154,8 @@ def train():
             print(f'In iteration {i} mEreward_1 is {mean_rew_1:.3f},'
                   f' mEreward_2 is {mean_rew_2:.3f}, beta is {buf.beta:.3f}'
                   f' mloss_1 is {mean_loss_1:.7f} mloss_2 is {mean_loss_2:.7f} time taken {(mark - start):.2f}')
-            print(context)
+            #print(context)
+            context = dict()
             episode_reward_1 = []
             mean_loss_1 = []
             episode_reward_2 = []

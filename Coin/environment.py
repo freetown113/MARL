@@ -36,14 +36,15 @@ class CoinGameVec:
                  max_steps: int,
                  batch_size: int,
                  grid_size: int = 3,
+                 num_coins: int = 3,
                  display: bool = False
                  ) -> None:
         self.max_steps = max_steps
         self.grid_size = grid_size
-        self.batch_size = batch_size
+        self.num_coins = num_coins
         self.show = display
         # The 4 channels stand for 2 players and 2 coin positions
-        self.ob_space_shape = [4, grid_size, grid_size]
+        self.ob_space_shape = [2 + 2 * self.num_coins, grid_size, grid_size]
         self.step_count = None
         self.action_space = gym.spaces.Discrete(n=len(self.Actions))
         self.observation_space = gym.spaces.Box(low=-np.inf, high=np.inf,
@@ -86,32 +87,33 @@ class CoinGameVec:
                      'gold_self': 0,
                      'gold_blacks': 0}
         self.step_count = 0
-        self.black_coin = np.random.randint(2, size=self.batch_size)
+        self.black_coin = np.random.randint(2, size=self.num_coins)
         # Agent and coin positions
         self.black_pos = np.random.randint(self.grid_size,
-                                           size=(self.batch_size, 2))
+                                           size=(2))
         self.gold_pos = np.random.randint(self.grid_size,
-                                          size=(self.batch_size, 2))
-        self.coin_pos = np.zeros((self.batch_size, 2), dtype=np.int8)
-        for i in range(self.batch_size):
-            # Make sure coins don't overlap
-            while self._same_pos(self.black_pos[i], self.gold_pos[i]):
-                self.gold_pos[i] = np.random.randint(self.grid_size, size=2)
+                                          size=(2))
+        self.coin_pos = np.zeros((self.num_coins, 2), dtype=np.int8)
+        # Make sure coins don't overlap
+        while self._same_pos(self.black_pos, self.gold_pos):
+            self.gold_pos = np.random.randint(self.grid_size, size=2)
+        for i in range(self.num_coins):
             self._generate_coin(i)
 
-            if self.show:
-                self.grid = make_grid(self.grid_size, self.win_size)
-                self.grid[self.black_pos.item(0)][self.black_pos.item(1)] \
-                    .type = self.Black
-                self.grid[self.gold_pos.item(0)][self.gold_pos.item(1)].type \
-                    = self.Gold
-                draw(self.window, self.grid, self.grid_size, self.win_size)
-                time.sleep(self.sim_speed)
-                if self.black_coin[0]:
-                    self.grid[self.coin_pos[i][0]][self.coin_pos[i][1]].type \
+        if self.show:
+            self.grid = make_grid(self.grid_size, self.win_size)
+            self.grid[self.black_pos.item(0)][self.black_pos.item(1)] \
+                .type = self.Black
+            self.grid[self.gold_pos.item(0)][self.gold_pos.item(1)].type \
+                = self.Gold
+            draw(self.window, self.grid, self.grid_size, self.win_size)
+            time.sleep(self.sim_speed)
+            for idx, coin in enumerate(self.coin_pos):
+                if self.black_coin[idx]:
+                    self.grid[coin[0]][coin[1]].type \
                         = self.Black_coin
                 else:
-                    self.grid[self.coin_pos[i][0]][self.coin_pos[i][1]].type \
+                    self.grid[coin[0]][coin[1]].type \
                         = self.Gold_coin
                 draw(self.window, self.grid, self.grid_size, self.win_size)
                 time.sleep(self.sim_speed)
@@ -127,109 +129,119 @@ class CoinGameVec:
             self.info['gold_coins'] += 1
         # Make sure coin has a different position than the agents
         success = 0
-        while success < 2:
+        while success < 2 + i:
             self.coin_pos[i] = np.random.randint(self.grid_size, size=(2))
-            success = 1 - self._same_pos(self.black_pos[i],
+            success = 1 - self._same_pos(self.black_pos,
                                          self.coin_pos[i])
-            success += 1 - self._same_pos(self.gold_pos[i],
+            for idx in range(0, i):
+                success += 1 - self._same_pos(self.coin_pos[idx],
+                                              self.coin_pos[i])
+            success += 1 - self._same_pos(self.gold_pos,
                                           self.coin_pos[i])
 
     def _same_pos(self, x, y):
         return (x == y).all()
 
     def _generate_state(self):
-        state = np.zeros([self.batch_size] + self.ob_space_shape,
+        state = np.zeros(self.ob_space_shape,
                          dtype=np.float32)
-        for i in range(self.batch_size):
-            state[i, 0, self.black_pos[i][0], self.black_pos[i][1]] = 1
-            state[i, 1, self.gold_pos[i][0], self.gold_pos[i][1]] = 1
-            if self.black_coin[i]:
-                state[i, 2, self.coin_pos[i][0], self.coin_pos[i][1]] = 1
+        state[0, self.black_pos[0], self.black_pos[1]] = 1
+        state[1, self.gold_pos[0], self.gold_pos[1]] = 1
+        for idx, coin in enumerate(self.coin_pos):
+            if self.black_coin[idx]:
+                state[(idx * 2) + 2, coin[0], coin[1]] = 1
             else:
-                state[i, 3, self.coin_pos[i][0], self.coin_pos[i][1]] = 1
-        return state
+                state[(idx * 2) + 3, coin[0], coin[1]] = 1
+        return torch.from_numpy(state).unsqueeze(0)
 
     def step(self,
              actions: np.array
              ) -> Tuple[np.array, float, bool, bool, str]:
-        for j in range(self.batch_size):
-            ac0, ac1 = actions[j]
-            ac0, ac1 = ac0.item(), ac1.item()
-            assert ac0 in {0, 1, 2, 3} and ac1 in {0, 1, 2, 3}
+        ac0, ac1 = actions[0]
+        ac0, ac1 = ac0.item(), ac1.item()
+        assert ac0 in {0, 1, 2, 3} and ac1 in {0, 1, 2, 3}
 
-            if self.show:
+        if self.show:
+            self.grid[self.black_pos.item(0)][self.black_pos.item(1)] \
+                .type = None
+            self.grid[self.gold_pos.item(0)][self.gold_pos.item(1)].type \
+                = None
+
+        self.black_pos = \
+            (self.black_pos + self.Actions[ac0]) % self.grid_size
+        self.gold_pos = \
+            (self.gold_pos + self.Actions[ac1]) % self.grid_size
+
+        if self.show:
+            if self._same_pos(self.black_pos, self.gold_pos):
                 self.grid[self.black_pos.item(0)][self.black_pos.item(1)] \
-                    .type = None
-                self.grid[self.gold_pos.item(0)][self.gold_pos.item(1)].type \
-                    = None
-
-            self.black_pos[j] = \
-                (self.black_pos[j] + self.Actions[ac0]) % self.grid_size
-            self.gold_pos[j] = \
-                (self.gold_pos[j] + self.Actions[ac1]) % self.grid_size
-
-            if self.show:
-                if self._same_pos(self.black_pos[j], self.gold_pos[j]):
-                    self.grid[self.black_pos.item(0)][self.black_pos.item(1)] \
-                        .type = self.Mix
-                else:
-                    self.grid[self.black_pos.item(0)][self.black_pos.item(1)] \
-                        .type = self.Black
-                    self.grid[self.gold_pos.item(0)][self.gold_pos.item(1)] \
-                        .type = self.Gold
-                draw(self.window, self.grid, self.grid_size, self.win_size)
-                time.sleep(self.sim_speed)
+                    .type = self.Mix
+            else:
+                self.grid[self.black_pos.item(0)][self.black_pos.item(1)] \
+                    .type = self.Black
+                self.grid[self.gold_pos.item(0)][self.gold_pos.item(1)] \
+                    .type = self.Gold
+            draw(self.window, self.grid, self.grid_size, self.win_size)
+            time.sleep(self.sim_speed)
 
         # Compute rewards
         reward_black, reward_gold = [], []
-        for i in range(self.batch_size):
-            generate = False
-            if self.black_coin[i]:
-                if self._same_pos(self.black_pos[i], self.coin_pos[i]):
-                    generate = True
-                    reward_black.append(1)
+        indices = []
+        for idx, coin in enumerate(self.coin_pos):
+            # generate = False
+            if self.black_coin[idx]:
+                if self._same_pos(self.gold_pos, coin):
+                    # generate = True
+                    reward_black.append(0)
                     reward_gold.append(0)
-                    self.info['black_self'] += 1
-                elif self._same_pos(self.gold_pos[i], self.coin_pos[i]):
-                    generate = True
-                    reward_black.append(-2)
-                    reward_gold.append(1)
-                    self.info['gold_blacks'] += 1
+                    # self.info['gold_blacks'] += 1
+                    indices.append(idx)
+                elif self._same_pos(self.black_pos, coin):
+                    # generate = True
+                    reward_black.append(1)
+                    reward_gold.append(-1)
+                    # self.info['black_self'] += 1
+                    indices.append(idx)
                 else:
                     reward_black.append(0)
                     reward_gold.append(0)
 
             else:
-                if self._same_pos(self.black_pos[i], self.coin_pos[i]):
-                    generate = True
-                    reward_black.append(1)
-                    reward_gold.append(-2)
-                    self.info['black_golds'] += 1
-                elif self._same_pos(self.gold_pos[i], self.coin_pos[i]):
-                    generate = True
+                if self._same_pos(self.gold_pos, coin):
+                    # generate = True
                     reward_black.append(0)
-                    reward_gold.append(1)
-                    self.info['gold_self'] += 1
+                    reward_gold.append(0)
+                    indices.append(idx)
+                elif self._same_pos(self.black_pos, coin):
+                    # generate = True
+                    reward_black.append(2)
+                    reward_gold.append(-2)
+                    # self.info['black_golds'] += 1
+                    indices.append(idx)
                 else:
                     reward_black.append(0)
                     reward_gold.append(0)
+        for idx in indices[::-1]:
+            self.coin_pos = np.delete(self.coin_pos, idx, axis=0)
+            self.black_coin = np.delete(self.black_coin, idx)
 
-            if generate:
-                self._generate_coin(i)
-                if self.show:
-                    if self.black_coin[i]:
-                        self.grid[self.coin_pos[i][0]][self.coin_pos[i][1]] \
-                            .type = self.Black_coin
-                    else:
-                        self.grid[self.coin_pos[i][0]][self.coin_pos[i][1]] \
-                            .type = self.Wood_coin
-                    draw(self.window, self.grid, self.grid_size, self.win_size)
-                    time.sleep(self.sim_speed)
+            # if generate:
+            #     self._generate_coin(i)
+        
+        if self.show:
+            for idx, coin in enumerate(self.coin_pos):
+                if self.black_coin[idx]:
+                    self.grid[coin[0]][coin[1]] \
+                        .type = self.Black_coin
+                else:
+                    self.grid[coin[0]][coin[1]] \
+                        .type = self.Gold_coin
+                draw(self.window, self.grid, self.grid_size, self.win_size)
+                time.sleep(self.sim_speed)
 
-        reward = [torch.tensor(reward_black), torch.tensor(reward_gold)]
+        reward = [torch.tensor(reward_black).sum(), torch.tensor(reward_gold).sum()]
         self.step_count += 1
-        done = np.array([(self.step_count == self.max_steps)
-                        for _ in range(self.batch_size)])
+        done = np.array(self.step_count == self.max_steps or self.coin_pos.size == 0)
         state = self._generate_state()
         trunc = True
         info = self.info  # 'some information'
