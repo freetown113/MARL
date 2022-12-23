@@ -97,28 +97,21 @@ class DQNAgent:
         self.gamma = gamma
         self.criterion = torch.nn.HuberLoss(reduction='none')
 
-    def initial_state(self):
-        """
-        Should create initial empty state for the self. It will be called for
-        the start of the episode
-        :return: Anything self want to remember
-        """
-        return None
-
     @torch.no_grad()
     def sample_action(self,
-                      states: Tuple | np.array
+                      states: Tuple | np.array,
+                      hidden: torch.Tensor
                       ) -> np.array:
         if torch.is_tensor(states):
             states = states.to(self.device)
-        q_v = self.network(states)
+        q_v, hidden = self.network(states, hidden)
         match q_v:
             case tuple():
                 q = (q_v[0].numpy(), q_v[1].numpy())
             case torch.Tensor():
                 q = q_v.numpy()
         actions = self.action_selector(q)
-        return torch.from_numpy(actions)
+        return torch.from_numpy(actions), hidden
 
     def train(self,
               states: torch.Tensor,
@@ -126,20 +119,21 @@ class DQNAgent:
               rewards: Tuple,
               dones: Tuple,
               n_states: torch.Tensor,
+              hid_states: torch.Tensor,
               indices: Tuple,
               weights: np.array
               ) -> Tuple:
 
-        q_vals = self.network(states)
-        q_pred = q_vals.gather(-1, actions)
+        q_vals, hidden = self.network(states, hid_states)
+        q_pred = q_vals.squeeze(0).gather(-1, actions)
 
         with torch.no_grad():
-            next_q_vals = self.network(n_states)
-            target_q_vals = self.target_network(n_states)
+            next_q_vals, _ = self.network(n_states, hidden)
+            target_q_vals, _ = self.target_network(n_states, hidden)
 
         next_act = torch.argmax(next_q_vals, dim=-1)
         next_q_pred = target_q_vals.gather(-1, next_act.unsqueeze(-1)) \
-            .squeeze(-1)
+            .squeeze(-1).squeeze(0)
 
         Q = rewards + self.gamma * next_q_pred.unsqueeze(-1) * (1 - dones)
 
@@ -167,9 +161,11 @@ class DQNAgent:
         rew_2 = rew_2.reshape(self.batch_size, -1)
         dones = torch.stack(next(elements))
         n_states = torch.stack(next(elements))
+        hx = torch.stack(next(elements)).reshape(1, self.batch_size, -1)
+        hc = torch.stack(next(elements)).reshape(1, self.batch_size, -1)
 
-        return states, act_1, act_2, rew_1, rew_2, dones, n_states, indices, \
-            weights
+        return states, act_1, act_2, rew_1, rew_2, dones, n_states, (hx, hc), \
+            indices, weights
 
 
 class DistributionalDQNAgent(DQNAgent):

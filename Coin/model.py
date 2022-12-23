@@ -51,7 +51,7 @@ class Network(nn.Module):
         super().__init__()
 
         self.conv = nn.Sequential(
-            nn.Conv2d(shape[0], 32, 3),
+            nn.Conv2d(shape[0], 32, 5),
             nn.ReLU(),
             nn.Conv2d(32, 32, 1),
             nn.ReLU(),
@@ -84,6 +84,78 @@ class Network(nn.Module):
         val = self.fc_val(conv_out)
         adv = self.fc_adv(conv_out)
         return val + (adv - adv.mean(dim=1, keepdim=True))
+
+
+class NetworkLSTM(nn.Module):
+    '''Neural network architecture build according to the Dueling DQN algorithm
+    Takes tensor representing states from the environment as input and returns
+    Q-values for each possible action from this state. Initially output is
+    divided into value function V(s) and andantage A(s,a). Their sum represents
+    Q(s,a) = V(s) + A(s,a). THis permits lerning process to be more stable.
+    '''
+    def __init__(self,
+                 shape: torch.Size,
+                 n_actions: int,
+                 hidden: int = 64,
+                 n_agents: int = 1,
+                 is_training: bool = True
+                 ) -> None:
+        super().__init__()
+
+        self.device = torch.device('cuda' if torch.cuda.is_available()
+                                   else 'cpu')
+        self.shape = shape
+        self.hidden = hidden
+        self.training = is_training
+        self.conv = nn.Sequential(
+            nn.Conv2d(shape[0], 32, 5),
+            nn.ReLU(),
+            nn.Conv2d(32, 32, 1),
+            nn.ReLU(),
+        )
+
+        out_size = self._get_conv_out(shape)
+
+        self.fc_val = nn.Sequential(
+            nn.Linear(hidden, 64),
+            nn.ReLU(),
+            nn.Linear(64, n_agents)
+        )
+
+        self.fc_adv = nn.Sequential(
+            nn.Linear(hidden, 64),
+            nn.ReLU(),
+            nn.Linear(64, n_actions)
+        )
+
+        self.lstm = nn.LSTM(out_size, hidden, batch_first=False)
+
+    def _init_hidden(self, size) -> torch.Tensor:
+        if self.training is True:
+            return torch.zeros([1, size, self.hidden]).to(self.device), \
+                   torch.zeros([1, size, self.hidden]).to(self.device)
+        else:
+            return torch.zeros([1, 1, self.hidden]).to(self.device), \
+                   torch.zeros([1, 1, self.hidden]).to(self.device)
+
+    def _get_conv_out(self,
+                      shape: torch.Size,
+                      ) -> int:
+        o = self.conv(torch.zeros(1, *shape))
+        return int(np.prod(o.size()))
+
+    def forward(self,
+                x: torch.Tensor,
+                hidden: torch.Tensor
+                ) -> torch.Tensor:
+        conv_out = self.conv(x).view(1, x.size()[0], -1)
+        if hidden is None:
+            hidden = self._init_hidden(x.shape[0])
+        lstm, hidden = self.lstm(conv_out, hidden)
+        lstm = lstm.squeeze(-2)
+        val = self.fc_val(lstm)
+        adv = self.fc_adv(lstm)
+        return val + (adv - adv.mean(dim=1, keepdim=True)), hidden
 
 
 class DistributionalNetwork(nn.Module):

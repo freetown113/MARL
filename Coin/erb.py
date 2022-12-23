@@ -5,7 +5,7 @@ import torch
 from typing import List, NamedTuple, Tuple
 
 experience = namedtuple('Experience', 'state, action, reward, done, \
-                         next_state')
+                         next_state, hx, hc')
 
 
 class ExperienceReplay:
