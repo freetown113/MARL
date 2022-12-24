@@ -34,7 +34,6 @@ class CoinGameVec:
 
     def __init__(self,
                  max_steps: int,
-                 batch_size: int,
                  grid_size: int = 3,
                  num_coins: int = 3,
                  display: bool = False
@@ -157,9 +156,12 @@ class CoinGameVec:
     def step(self,
              actions: np.array
              ) -> Tuple[np.array, float, bool, bool, str]:
-        ac0, ac1 = actions[0]
-        ac0, ac1 = ac0.item(), ac1.item()
-        assert ac0 in {0, 1, 2, 3} and ac1 in {0, 1, 2, 3}
+        # ac0, ac1 = actions[0]
+        # ac0, ac1 = ac0.item(), ac1.item()
+        # assert ac0 in {0, 1, 2, 3} and ac1 in {0, 1, 2, 3}
+        actions = actions.item()
+        ac0 = actions // len(self.Actions)
+        ac1 = actions % len(self.Actions)
 
         if self.show:
             self.grid[self.black_pos.item(0)][self.black_pos.item(1)] \

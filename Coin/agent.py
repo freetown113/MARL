@@ -152,9 +152,7 @@ class DQNAgent:
 
         states = torch.stack(next(elements))
         actions = next(elements)
-        act_1, act_2 = torch.chunk(torch.tensor(actions), 2, dim=-1)
-        act_1 = act_1.reshape(self.batch_size, -1)
-        act_2 = act_2.reshape(self.batch_size, -1)
+        actions = torch.stack(actions)
         rewards = next(elements)
         rew_1, rew_2 = torch.chunk(torch.tensor(rewards), 2, dim=-2)
         rew_1 = rew_1.reshape(self.batch_size, -1)
@@ -164,7 +162,7 @@ class DQNAgent:
         hx = torch.stack(next(elements)).reshape(1, self.batch_size, -1)
         hc = torch.stack(next(elements)).reshape(1, self.batch_size, -1)
 
-        return states, act_1, act_2, rew_1, rew_2, dones, n_states, (hx, hc), \
+        return states, actions, rew_1, rew_2, dones, n_states, (hx, hc), \
             indices, weights
 
 

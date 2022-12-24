@@ -48,15 +48,15 @@ config__ = {
 def train():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    env = environment.CoinGameVec(100, 1, 5, display=False)
+    env = environment.CoinGameVec(100, 5, display=False)
 
     net_1 = model.NetworkLSTM(env.observation_space.shape,
-                                        env.action_space.n).to(device)
+                                        env.action_space.n, n_agents=2).to(device)
     net_1.apply(weights_init('orthogonal'))
     target_net_1 = copy.deepcopy(net_1)
 
     net_2 = model.NetworkLSTM(env.observation_space.shape,
-                                        env.action_space.n).to(device)
+                                        env.action_space.n, n_agents=2).to(device)
     net_2.apply(weights_init('orthogonal'))
     target_net_2 = copy.deepcopy(net_2)
 
@@ -96,9 +96,8 @@ def train():
 
         state = state.to(device)
         h = hidden
-        action_1, hidden = agnt_1.sample_action(state, h)
-        action_2, _ = agnt_2.sample_action(state, h)
-        actions = tuple(((action_1, action_2),))
+        actions, hidden = agnt_2.sample_action(state, h)
+        # actions = tuple(((action_1, action_2),))
 
         next_state, reward, done, trunc, info = env.step(actions)
 
@@ -128,9 +127,9 @@ def train():
             optimizer_1.zero_grad()
             optimizer_2.zero_grad()
 
-            states, act_1, act_2, rew_1, rew_2, dones, n_states, hid, indices, weights = agnt_1.get_batch_data()
-            loss_1, priorities_1, indices_1 = agnt_1.train(states, act_1, rew_1, dones, n_states, hid, indices, weights)
-            loss_2, priorities_2, indices_2 = agnt_2.train(states, act_2, rew_2, dones, n_states, hid, indices, weights)
+            states, actions, rew_1, rew_2, dones, n_states, hid, indices, weights = agnt_1.get_batch_data()
+            loss_1, priorities_1, indices_1 = agnt_1.train(states, actions, rew_1, dones, n_states, hid, indices, weights)
+            loss_2, priorities_2, indices_2 = agnt_2.train(states, actions, rew_2, dones, n_states, hid, indices, weights)
 
             loss_1.backward()
             loss_2.backward()

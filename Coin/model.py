@@ -119,13 +119,13 @@ class NetworkLSTM(nn.Module):
         self.fc_val = nn.Sequential(
             nn.Linear(hidden, 64),
             nn.ReLU(),
-            nn.Linear(64, n_agents)
+            nn.Linear(64, 1)
         )
 
         self.fc_adv = nn.Sequential(
             nn.Linear(hidden, 64),
             nn.ReLU(),
-            nn.Linear(64, n_actions)
+            nn.Linear(64, n_actions ** n_agents)
         )
 
         self.lstm = nn.LSTM(out_size, hidden, batch_first=False)
