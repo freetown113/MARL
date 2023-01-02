@@ -41,7 +41,7 @@ config__ = {
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-env = battle_v4.env(map_size=20,  render_mode=None, max_cycles=1000)
+env = battle_v4.env(map_size=15,  render_mode=None, max_cycles=1000)
 # print(env.observation_spaces, env.action_spaces)
 env.reset()
 

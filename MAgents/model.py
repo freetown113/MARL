@@ -54,7 +54,7 @@ class NetworkLSTM(nn.Module):
 
         self.device = torch.device('cuda' if torch.cuda.is_available()
                                    else 'cpu')
-        self.in_size = np.product(shape)
+        self.in_size = np.product(shape) + int(n_actions)
         self.shape = shape
         self.hidden = hidden
         self.training = is_training

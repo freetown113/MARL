@@ -1,38 +1,24 @@
 import numpy as np
 import torch
 from typing import Any, Callable, Dict, Tuple
+from scipy.spatial.distance import cityblock
 
 
 class EpsilonGreedyActionSelector:
     def __init__(self,
-                 epsilon: float = 0.05,
+                 temperature: float = 0.5,
                  selector: Callable = None
                  ) -> None:
-        self.epsilon = epsilon
-        self.selector = selector if selector is not None else np.argmax
+        self.temperature = temperature
+        self.selector = selector if selector is not None else torch.multinomial
 
     def __call__(self,
-                 scores: Tuple | np.array
-                 ) -> np.array:
-        match scores:
-            case tuple():
-                assert scores[0].shape == scores[1].shape
-                batch_size, n_actions = scores[0].shape
-                actions = []
-                for s in scores:
-                    action = self.selector(s, axis=1)
-                    mask = np.random.random(size=batch_size) < self.epsilon
-                    rand_actions = np.random.choice(n_actions, sum(mask))
-                    action[mask] = rand_actions
-                    actions.append(action)
-                return torch.tensor(actions).reshape(batch_size, -1, 1)
-            case np.ndarray():
-                batch_size, n_actions = scores.shape
-                actions = self.selector(scores, axis=1)
-                mask = np.random.random(size=batch_size) < self.epsilon
-                rand_actions = np.random.choice(n_actions, sum(mask))
-                actions[mask] = rand_actions
-                return actions
+                 scores: torch.Tensor
+                 ) -> torch.Tensor:
+        soft = torch.exp(scores / self.temperature) / \
+               torch.sum(torch.exp(scores / self.temperature))
+        action = self.selector(soft, 1)
+        return action
 
 
 class EpsilonTracker:
@@ -101,20 +87,11 @@ class DQNAgent:
 
     @torch.no_grad()
     def sample_action(self,
-                      agent: str,
-                      states: Tuple | np.array,
-                      hidden: torch.Tensor
-                      ) -> np.array:
-        if torch.is_tensor(states):
-            states = states.to(self.device)
-        q_v, hidden = self.network[self.agents_list[agent]](states, hidden)
-        match q_v:
-            case tuple():
-                q = (q_v[0].numpy(), q_v[1].numpy())
-            case torch.Tensor():
-                q = q_v.numpy()
-        actions = self.action_selector(q)
-        return torch.from_numpy(actions), hidden
+                      agent: int,
+                      q_v: torch.Tensor
+                      ) -> torch.Tensor:
+        actions = self.action_selector(q_v)
+        return actions
 
     def train(self,
               agent: str,
@@ -164,3 +141,56 @@ class DQNAgent:
 
         return states, actions, rewards, dones, n_states, (hx, hc), \
             indices, weights
+
+    def get_neighbors(self, j, pos_list, r=6):
+        neighbors = []
+        pos_j = pos_list[j]
+        for i, pos in enumerate(pos_list):
+            if i == j:
+                continue
+            dist = cityblock(pos, pos_j)
+            if dist < r:
+                neighbors.append(i)
+        return neighbors
+
+    def get_onehot(self, a, act_space=21):
+        x = torch.zeros(act_space)
+        x[a] = 1
+        return x
+
+    def get_scalar(self, v):
+        return torch.argmax(v)
+
+    def get_mean_field(self, j, pos_list, act_list, r=7, acts=21):
+        neighbors = self.get_neighbors(j, pos_list, r=r)
+        mean_field = torch.zeros(acts)
+        for k in neighbors:
+            act_ = act_list[k]
+            act = self.get_onehot(act_)
+            mean_field += act
+        tot = mean_field.sum()
+        mean_field = mean_field / tot if tot > 0 else mean_field
+        return mean_field
+
+    def infer_acts(self, obs, pos_list, acts, hidden, act_space=21, num_iter=5):
+        N = acts.shape[0]
+        mean_fields = torch.zeros(N, act_space)
+        acts_ = acts.clone()
+        qvals = torch.zeros(N, act_space)
+        h = hidden
+        for i in range(num_iter):
+            for j in range(N):
+                mean_fields[j] = self.get_mean_field(j, pos_list, acts_)
+
+            for j in range(N):
+                state = torch.cat((obs[j].flatten(), mean_fields[j]))
+                qs, h[j] = self.network[0](state.unsqueeze(0), h[j])
+                qvals[j, :] = qs[:]
+                acts_[j] = self.sample_action(j, qs.detach())
+        return acts_, mean_fields, qvals, h
+
+    def init_mean_field(self, N, act_space=21):
+        mean_fields = torch.abs(torch.rand(N, act_space))
+        for i in range(mean_fields.shape[0]):
+            mean_fields[i] = mean_fields[i] / mean_fields[i].sum()
+        return mean_fields
